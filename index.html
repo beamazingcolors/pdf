@@ -90,10 +90,29 @@
   <!-- Notification Toast Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
-  <!-- Loading State Indicator -->
-  <div id="loadingOverlay" class="hidden fixed inset-0 z-50 bg-[#323639] flex flex-col items-center justify-center p-4">
-    <div class="w-8 h-8 border-2 border-zinc-500 border-t-white rounded-full animate-spin mb-3"></div>
-    <p id="loadingOverlayText" class="text-xs text-zinc-300 font-medium tracking-wide">Cargando PDF...</p>
+  <!-- Loading State & Error Overlay -->
+  <div id="loadingOverlay" class="hidden fixed inset-0 z-50 bg-[#323639] flex flex-col items-center justify-center p-6 text-center">
+    <div id="loadingSpinner" class="w-9 h-9 border-2 border-zinc-500 border-t-white rounded-full animate-spin mb-4"></div>
+    <p id="loadingOverlayText" class="text-xs text-zinc-300 font-medium tracking-wide">Cargando documento...</p>
+    <p id="loadingOverlaySubtext" class="text-[11px] text-zinc-500 mt-1 max-w-xs">Obteniendo páginas desde la nube...</p>
+
+    <!-- Error State Box (hidden by default) -->
+    <div id="loadingErrorBox" class="hidden flex-col items-center max-w-sm mt-4 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-3">
+      <div class="w-8 h-8 rounded-full bg-rose-950/60 border border-rose-800/40 flex items-center justify-center text-rose-300 text-sm font-bold">
+        !
+      </div>
+      <p id="loadingErrorMessage" class="text-xs text-zinc-300 text-center leading-relaxed font-medium">
+        No se encontró el documento o el enlace no es válido.
+      </p>
+      <div class="flex items-center space-x-2 pt-1">
+        <button onclick="retryCurrentDocument()" class="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs rounded-xl transition-colors">
+          Reintentar
+        </button>
+        <button onclick="exitPurePdfView()" class="px-3.5 py-1.5 border border-zinc-700 hover:bg-zinc-800 text-zinc-300 text-xs rounded-xl transition-colors">
+          Ir al inicio
+        </button>
+      </div>
+    </div>
   </div>
 
   <main id="mainAppContent" class="flex-1 max-w-3xl w-full mx-auto px-4 py-10 sm:py-16">
@@ -302,9 +321,9 @@
   </footer>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Application state
     const STATE = {
@@ -315,151 +334,203 @@
       currentDocTitle: '',
       currentShareUrl: '',
       currentDocId: '',
-      pillTimer: null
+      pillTimer: null,
+      docMemoryCache: new Map(),
+      activeAppId: typeof __app_id !== 'undefined' ? __app_id : 'solymar-pdflinks',
+      activeConfig: null
     };
 
     if (window.pdfjsLib) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
-    // Firebase cloud authentication & initialization
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pdf-app';
     let db = null;
     let auth = null;
     let authUser = null;
     let authPromise = null;
 
-    async function ensureCloudAuth() {
-      if (authUser) return authUser;
+    // Helper to safely serialize configuration for cross-device links and QR codes
+    function serializeConfig(cfg) {
+      if (!cfg) return '';
+      try {
+        const minimal = {
+          apiKey: cfg.apiKey,
+          authDomain: cfg.authDomain,
+          projectId: cfg.projectId,
+          storageBucket: cfg.storageBucket,
+          appId: cfg.appId
+        };
+        return encodeURIComponent(btoa(JSON.stringify(minimal)));
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function deserializeConfig(str) {
+      if (!str) return null;
+      try {
+        return JSON.parse(atob(decodeURIComponent(str)));
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function ensureCloudAuth(customConfig = null, customAppId = null) {
+      if (customAppId) {
+        STATE.activeAppId = customAppId;
+      }
+
+      if (authUser && db) return authUser;
       if (authPromise) return authPromise;
 
       authPromise = (async () => {
         try {
-          if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+          let firebaseConfig = customConfig || STATE.activeConfig;
+
+          // 1. Check runtime global config
+          if (!firebaseConfig && typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+              firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+            } catch (e) {
+              console.warn("Parse error for __firebase_config:", e);
+            }
+          }
+
+          // 2. Check session fallback
+          if (!firebaseConfig) {
+            try {
+              const sessionCfg = sessionStorage.getItem('solymar_fb_cfg');
+              if (sessionCfg) firebaseConfig = JSON.parse(sessionCfg);
+            } catch (e) {}
+          }
+
+          if (!firebaseConfig) {
+            console.warn("No cloud configuration available.");
             return null;
           }
-          const firebaseConfig = JSON.parse(__firebase_config);
-          const app = initializeApp(firebaseConfig);
+
+          STATE.activeConfig = firebaseConfig;
+          try {
+            sessionStorage.setItem('solymar_fb_cfg', JSON.stringify(firebaseConfig));
+          } catch (e) {}
+
+          // Initialize Firebase client
+          const apps = getApps();
+          const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
           auth = getAuth(app);
           db = getFirestore(app);
 
+          // Authenticate strictly before any Firestore query (RULE 3)
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            const cred = await signInWithCustomToken(auth, __initial_auth_token);
-            authUser = cred.user;
+            try {
+              const cred = await signInWithCustomToken(auth, __initial_auth_token);
+              authUser = cred.user;
+            } catch (authErr) {
+              const anonCred = await signInAnonymously(auth);
+              authUser = anonCred.user;
+            }
           } else {
-            const cred = await signInAnonymously(auth);
-            authUser = cred.user;
+            const anonCred = await signInAnonymously(auth);
+            authUser = anonCred.user;
           }
+
           return authUser;
         } catch (err) {
-          console.warn("Cloud auth initialization:", err);
+          console.error("Cloud Auth Error:", err);
           return null;
+        } finally {
+          authPromise = null;
         }
       })();
 
       return authPromise;
     }
 
-    const DB_NAME = 'PDF2Link_Pure_Cache';
-    let localDb = null;
-
-    function initLocalCache() {
-      return new Promise((resolve) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = (e) => {
-          const database = e.target.result;
-          if (!database.objectStoreNames.contains('pdfs')) {
-            database.createObjectStore('pdfs', { keyPath: 'id' });
-          }
-        };
-        req.onsuccess = (e) => {
-          localDb = e.target.result;
-          resolve(localDb);
-        };
-        req.onerror = () => resolve(null);
-      });
-    }
-
-    function saveLocalPdf(record) {
-      return new Promise((resolve) => {
-        if (!localDb) return resolve(false);
-        try {
-          const tx = localDb.transaction('pdfs', 'readwrite');
-          const store = tx.objectStore('pdfs');
-          store.put(record);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        } catch {
-          resolve(false);
-        }
-      });
-    }
-
-    function getLocalPdf(id) {
-      return new Promise((resolve) => {
-        if (!localDb) return resolve(null);
-        try {
-          const tx = localDb.transaction('pdfs', 'readonly');
-          const store = tx.objectStore('pdfs');
-          const req = store.get(id);
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => resolve(null);
-        } catch {
-          resolve(null);
-        }
-      });
-    }
-
-    const CHUNK_SIZE = 450000; // ~450KB chunks to safely respect Firestore 1MB document limit
+    const CHUNK_SIZE = 550000; // ~550KB chunks to safely fit Firestore 1MB document limit
 
     async function uploadPdfToCloud(docId, fileName, fileSize, base64Data) {
       const user = await ensureCloudAuth();
-      if (!user || !db) return false;
+      if (!user || !db) {
+        throw new Error("No se pudo conectar al almacenamiento en la nube.");
+      }
 
-      try {
-        const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-        const chunkUploads = [];
+      const appId = STATE.activeAppId;
 
-        for (let i = 0; i < totalChunks; i++) {
-          const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-          const chunkDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
-          chunkUploads.push(setDoc(chunkDocRef, {
-            chunkIndex: i,
-            data: chunkData
-          }));
-        }
-        await Promise.all(chunkUploads);
-
+      // Optimization: If document is <= 650KB, store data directly in 1 document
+      if (base64Data.length <= CHUNK_SIZE) {
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
         await setDoc(metaDocRef, {
           id: docId,
           name: fileName,
           size: fileSize,
-          totalChunks: totalChunks,
+          totalChunks: 1,
+          inlineData: base64Data,
           uploadedAt: Date.now()
         });
-
         return true;
-      } catch (err) {
-        console.error("Cloud upload error:", err);
-        return false;
       }
+
+      // For larger documents: slice into chunks (RULE 1 strictly adhered)
+      const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+      const chunkUploads = [];
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        const chunkDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
+        chunkUploads.push(setDoc(chunkDocRef, {
+          chunkIndex: i,
+          data: chunkData
+        }));
+      }
+
+      await Promise.all(chunkUploads);
+
+      const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
+      await setDoc(metaDocRef, {
+        id: docId,
+        name: fileName,
+        size: fileSize,
+        totalChunks: totalChunks,
+        uploadedAt: Date.now()
+      });
+
+      return true;
     }
 
-    async function fetchPdfFromCloud(docId) {
-      const user = await ensureCloudAuth();
-      if (!user || !db) return null;
+    async function fetchPdfFromCloud(docId, customConfig = null, customAppId = null) {
+      const user = await ensureCloudAuth(customConfig, customAppId);
+      if (!user || !db) {
+        console.warn("fetchPdfFromCloud: No user or db available");
+        return null;
+      }
+
+      const appId = customAppId || STATE.activeAppId;
 
       try {
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
         const metaSnap = await getDoc(metaDocRef);
 
-        if (!metaSnap.exists()) return null;
+        if (!metaSnap.exists()) {
+          console.warn("Document not found in Firestore:", docId);
+          return null;
+        }
 
         const meta = metaSnap.data();
-        const totalChunks = meta.totalChunks || 1;
 
+        // Check if inline data exists (fast path)
+        if (meta.inlineData) {
+          return {
+            id: docId,
+            name: meta.name,
+            size: meta.size,
+            dataUrl: 'data:application/pdf;base64,' + meta.inlineData
+          };
+        }
+
+        // Otherwise assemble chunks
+        const totalChunks = meta.totalChunks || 1;
         const chunkFetches = [];
+
         for (let i = 0; i < totalChunks; i++) {
           const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
           chunkFetches.push(getDoc(chunkRef));
@@ -468,9 +539,12 @@
         const chunkSnaps = await Promise.all(chunkFetches);
         let fullBase64 = '';
         for (let i = 0; i < totalChunks; i++) {
-          const chunkData = chunkSnaps[i].data();
-          if (chunkData && chunkData.data) {
-            fullBase64 += chunkData.data;
+          const snap = chunkSnaps[i];
+          if (snap && snap.exists()) {
+            const chunkData = snap.data();
+            if (chunkData && chunkData.data) {
+              fullBase64 += chunkData.data;
+            }
           }
         }
 
@@ -489,37 +563,54 @@
     }
 
     function getResolvedBaseUrl() {
-      // 1. Check custom user configured domain
-      const saved = localStorage.getItem('solymar_custom_domain');
-      if (saved && saved.trim()) {
-        let clean = saved.trim().replace(/\/+$/, '');
-        if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-          clean = 'https://' + clean;
-        }
-        return clean;
-      }
-
-      // 2. Check if current environment has a real HTTP/HTTPS origin
+      // 1. User custom domain setting
       try {
-        if (window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
-          const path = window.location.pathname || '';
-          return (window.location.origin + path).replace(/\/+$/, '');
+        const saved = sessionStorage.getItem('solymar_custom_domain');
+        if (saved && saved.trim()) {
+          let clean = saved.trim().replace(/\/+$/, '');
+          if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+            clean = 'https://' + clean;
+          }
+          return clean;
         }
       } catch (e) {}
 
-      // 3. Fallback for sandbox, iframe or file environments: guaranteed valid web URL
-      return 'https://solymar-pdflinks.web.app';
+      // 2. Real browser origin & path
+      try {
+        if (window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+          const url = new URL(window.location.href);
+          return (url.origin + url.pathname).replace(/\/+$/, '');
+        }
+      } catch (e) {}
+
+      return window.location.href.split('#')[0].split('?')[0].replace(/\/+$/, '');
     }
 
     function buildShareUrl(docId) {
       const baseUrl = getResolvedBaseUrl();
-      return `${baseUrl}#doc=${docId}`;
+      const params = new URLSearchParams();
+      params.set('doc', docId);
+
+      // Embed cloud configuration token if available so mobile scanners can connect
+      if (STATE.activeConfig) {
+        const cfgToken = serializeConfig(STATE.activeConfig);
+        if (cfgToken) params.set('cfg', cfgToken);
+      }
+      if (STATE.activeAppId && STATE.activeAppId !== 'default-pdf-app') {
+        params.set('app', STATE.activeAppId);
+      }
+
+      return `${baseUrl}#${params.toString()}`;
     }
 
     function openDomainModal() {
       const modal = document.getElementById('domainModal');
       const input = document.getElementById('customDomainInput');
-      input.value = localStorage.getItem('solymar_custom_domain') || getResolvedBaseUrl();
+      let current = '';
+      try {
+        current = sessionStorage.getItem('solymar_custom_domain') || '';
+      } catch (e) {}
+      input.value = current || getResolvedBaseUrl();
       modal.classList.remove('hidden');
       input.focus();
     }
@@ -531,17 +622,20 @@
     function saveCustomDomain() {
       const input = document.getElementById('customDomainInput');
       let val = (input.value || '').trim();
-      if (val) {
-        if (!val.startsWith('http://') && !val.startsWith('https://')) {
-          val = 'https://' + val;
+      try {
+        if (val) {
+          if (!val.startsWith('http://') && !val.startsWith('https://')) {
+            val = 'https://' + val;
+          }
+          val = val.replace(/\/+$/, '');
+          sessionStorage.setItem('solymar_custom_domain', val);
+        } else {
+          sessionStorage.removeItem('solymar_custom_domain');
         }
-        val = val.replace(/\/+$/, '');
-        localStorage.setItem('solymar_custom_domain', val);
-      } else {
-        localStorage.removeItem('solymar_custom_domain');
-      }
+      } catch (e) {}
+
       closeDomainModal();
-      showToast('Dominio actualizado', 'info');
+      showToast('Dirección base actualizada', 'info');
 
       if (STATE.currentDocId) {
         const newUrl = buildShareUrl(STATE.currentDocId);
@@ -561,7 +655,7 @@
         height: 140,
         colorDark: "#09090b",
         colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
+        correctLevel: QRCode.CorrectLevel.M
       });
     }
 
@@ -636,64 +730,78 @@
       const statusText = document.getElementById('uploadStatusText');
 
       progressContainer.classList.remove('hidden');
-      progressBar.style.width = '20%';
-      percentText.innerText = '20%';
+      progressBar.style.width = '15%';
+      percentText.innerText = '15%';
       statusText.innerText = 'Leyendo archivo PDF...';
+
+      // Pre-authenticate cloud
+      await ensureCloudAuth();
 
       const reader = new FileReader();
 
       reader.onload = async (evt) => {
-        progressBar.style.width = '50%';
-        percentText.innerText = '50%';
-        statusText.innerText = 'Generando enlace universal...';
+        try {
+          progressBar.style.width = '45%';
+          percentText.innerText = '45%';
+          statusText.innerText = 'Preparando documento...';
 
-        const arrayBuffer = evt.target.result;
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i += 8192) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)));
-        }
-        const base64Data = btoa(binary);
-        const dataUrl = 'data:application/pdf;base64,' + base64Data;
+          const arrayBuffer = evt.target.result;
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const len = bytes.byteLength;
+          for (let i = 0; i < len; i += 8192) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)));
+          }
+          const base64Data = btoa(binary);
+          const dataUrl = 'data:application/pdf;base64,' + base64Data;
 
-        // Generate unique compact identifier
-        const docId = 'doc_' + Math.random().toString(36).substring(2, 8) + Date.now().toString(36).slice(-4);
-        const shareUrl = buildShareUrl(docId);
+          const docId = 'doc_' + Math.random().toString(36).substring(2, 7) + Date.now().toString(36).slice(-4);
+          const shareUrl = buildShareUrl(docId);
 
-        const record = {
-          id: docId,
-          name: file.name,
-          size: file.size,
-          date: new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
-          dataUrl: dataUrl,
-          shareUrl: shareUrl
-        };
+          const record = {
+            id: docId,
+            name: file.name,
+            size: file.size,
+            date: new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
+            dataUrl: dataUrl,
+            shareUrl: shareUrl
+          };
 
-        // Cache locally for instant loading on this device
-        await saveLocalPdf(record);
-        saveHistoryItem(record);
+          // Cache in memory for instant local rendering
+          STATE.docMemoryCache.set(docId, record);
 
-        // Upload to universal cloud storage
-        progressBar.style.width = '80%';
-        percentText.innerText = '80%';
-        statusText.innerText = 'Sincronizando para acceso en cualquier dispositivo...';
+          progressBar.style.width = '70%';
+          percentText.innerText = '70%';
+          statusText.innerText = 'Sincronizando con la nube para acceso universal...';
 
-        await uploadPdfToCloud(docId, file.name, file.size, base64Data);
+          // Upload to Firestore
+          const uploadSuccess = await uploadPdfToCloud(docId, file.name, file.size, base64Data);
 
-        progressBar.style.width = '100%';
-        percentText.innerText = '100%';
-        statusText.innerText = '¡Listo!';
+          if (!uploadSuccess) {
+            throw new Error("No se pudo completar la sincronización.");
+          }
 
-        setTimeout(() => {
+          progressBar.style.width = '100%';
+          percentText.innerText = '100%';
+          statusText.innerText = '¡Enlace generado!';
+
+          // Save to user history
+          saveHistoryItem(record);
+
+          setTimeout(() => {
+            progressContainer.classList.add('hidden');
+            showResult(record);
+          }, 350);
+        } catch (uploadErr) {
+          console.error("Upload error:", uploadErr);
           progressContainer.classList.add('hidden');
-          showResult(record);
-        }, 300);
+          showToast('Error al subir: ' + (uploadErr.message || 'Intente nuevamente'), 'error');
+        }
       };
 
       reader.onerror = () => {
         progressContainer.classList.add('hidden');
-        showToast('Error al procesar el archivo.', 'error');
+        showToast('Error al leer el archivo PDF.', 'error');
       };
 
       reader.readAsArrayBuffer(file);
@@ -709,7 +817,6 @@
       document.getElementById('generatedLinkInput').value = record.shareUrl;
       document.getElementById('currentBaseUrlDisplay').innerText = getResolvedBaseUrl();
 
-      // Render crisp scannable QR Code
       renderQrCode(record.shareUrl);
 
       const card = document.getElementById('resultCard');
@@ -748,16 +855,13 @@
     }
 
     function enterPurePdfView() {
-      // Hide all standard web UI elements
       document.getElementById('mainAppHeader').classList.add('hidden');
       document.getElementById('mainAppFooter').classList.add('hidden');
       document.getElementById('mainAppContent').classList.add('hidden');
 
-      // Show the pure PDF canvas container
       const pureViewer = document.getElementById('pdfPureViewer');
       pureViewer.classList.remove('hidden');
 
-      // Adapt body styling for true full-screen document viewing
       document.body.classList.add('bg-[#323639]', 'overflow-hidden');
       document.body.classList.remove('bg-[#fafafa]');
 
@@ -765,7 +869,8 @@
     }
 
     function exitPurePdfView() {
-      // Restore standard website view
+      document.getElementById('loadingOverlay').classList.add('hidden');
+      document.getElementById('loadingErrorBox').classList.add('hidden');
       document.getElementById('pdfPureViewer').classList.add('hidden');
       document.getElementById('mainAppHeader').classList.remove('hidden');
       document.getElementById('mainAppFooter').classList.remove('hidden');
@@ -777,7 +882,9 @@
       showUploaderView();
 
       if (window.location.hash) {
-        history.pushState(null, '', window.location.pathname);
+        try {
+          history.pushState(null, '', window.location.pathname);
+        } catch (e) {}
       }
     }
 
@@ -806,16 +913,13 @@
         document.getElementById('floatingPageTotal').innerText = STATE.totalPageCount;
         document.getElementById('floatingPageNum').innerText = '1';
 
-        // Calculate initial optimal scale based on device screen width
         const firstPage = await STATE.currentPdfDoc.getPage(1);
         const unscaled = firstPage.getViewport({ scale: 1.0 });
         const screenW = window.innerWidth;
         
         if (screenW < 768) {
-          // Mobile: fit full width with comfortable margin
-          STATE.zoomScale = Math.min((screenW - 24) / unscaled.width, 1.6);
+          STATE.zoomScale = Math.min((screenW - 20) / unscaled.width, 1.6);
         } else {
-          // Desktop: comfortable centered reading width
           STATE.zoomScale = Math.min((screenW - 64) / unscaled.width, 1.25);
         }
 
@@ -926,16 +1030,25 @@
 
     async function resolveDocFromHash() {
       let docId = null;
+      let cfgToken = null;
+      let targetAppId = null;
 
-      // Check URL search parameters (?doc=...)
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        docId = urlParams.get('doc');
-      } catch (e) {}
+      // 1. Extract from hash or search query
+      const hashContent = window.location.hash ? window.location.hash.substring(1) : '';
+      if (hashContent) {
+        const hashParams = new URLSearchParams(hashContent);
+        docId = hashParams.get('doc');
+        cfgToken = hashParams.get('cfg');
+        targetAppId = hashParams.get('app');
+      }
 
-      // Check URL hash (#doc=...)
-      if (!docId && window.location.hash && window.location.hash.includes('doc=')) {
-        docId = window.location.hash.split('doc=')[1].split('&')[0];
+      if (!docId) {
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          docId = urlParams.get('doc');
+          if (!cfgToken) cfgToken = urlParams.get('cfg');
+          if (!targetAppId) targetAppId = urlParams.get('app');
+        } catch (e) {}
       }
 
       if (!docId) {
@@ -943,21 +1056,36 @@
         return;
       }
 
-      // Show clean fullscreen loading indicator
+      // Check if custom cloud config was supplied in URL
+      let decodedConfig = null;
+      if (cfgToken) {
+        decodedConfig = deserializeConfig(cfgToken);
+      }
+
+      // Show full-screen loading state
       const overlay = document.getElementById('loadingOverlay');
+      const spinner = document.getElementById('loadingSpinner');
+      const errorBox = document.getElementById('loadingErrorBox');
+      const overlayText = document.getElementById('loadingOverlayText');
+      const overlaySubtext = document.getElementById('loadingOverlaySubtext');
+
       overlay.classList.remove('hidden');
+      spinner.classList.remove('hidden');
+      errorBox.classList.add('hidden');
+      overlayText.innerText = 'Cargando documento...';
+      overlaySubtext.innerText = 'Obteniendo PDF para visualizar...';
 
       try {
-        // Step 1: Instant local cache check
-        let record = await getLocalPdf(docId);
+        // Step 1: Check in-memory cache
+        let record = STATE.docMemoryCache.get(docId);
 
-        // Step 2: Cloud fetch if opened on another device/browser or via QR
+        // Step 2: Fetch from Firestore
         if (!record || !record.dataUrl) {
-          await ensureCloudAuth();
-          const cloudRecord = await fetchPdfFromCloud(docId);
-          if (cloudRecord && cloudRecord.dataUrl) {
-            record = cloudRecord;
-            await saveLocalPdf(record); // Cache for quick re-reading
+          overlaySubtext.innerText = 'Descargando desde la nube...';
+          record = await fetchPdfFromCloud(docId, decodedConfig, targetAppId);
+
+          if (record && record.dataUrl) {
+            STATE.docMemoryCache.set(docId, record);
           }
         }
 
@@ -965,16 +1093,27 @@
           overlay.classList.add('hidden');
           await renderPurePdfViewer(record.dataUrl, record.name, record.id);
         } else {
-          overlay.classList.add('hidden');
-          showToast('No se encontró el documento o ha expirado.', 'error');
-          exitPurePdfView();
+          // Show error state with clear retry button
+          spinner.classList.add('hidden');
+          errorBox.classList.remove('hidden');
+          overlayText.innerText = 'No se encontró el documento';
+          overlaySubtext.innerText = '';
+          document.getElementById('loadingErrorMessage').innerText =
+            'El documento no está disponible o el enlace no contiene los parámetros de acceso.';
         }
       } catch (err) {
         console.error("Resolution error:", err);
-        overlay.classList.add('hidden');
-        showToast('Error al obtener el documento.', 'error');
-        exitPurePdfView();
+        spinner.classList.add('hidden');
+        errorBox.classList.remove('hidden');
+        overlayText.innerText = 'Error al cargar';
+        overlaySubtext.innerText = '';
+        document.getElementById('loadingErrorMessage').innerText =
+          'Ocurrió un error al obtener el documento: ' + (err.message || 'Error de conexión.');
       }
+    }
+
+    function retryCurrentDocument() {
+      resolveDocFromHash();
     }
 
     function showUploaderView() {
@@ -994,84 +1133,93 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function saveHistoryItem(record) {
+    async function saveHistoryItem(record) {
       try {
-        const item = {
-          id: record.id,
-          name: record.name,
-          size: record.size,
-          date: record.date,
-          shareUrl: record.shareUrl
-        };
-        let items = JSON.parse(localStorage.getItem('pdf2link_saved') || '[]');
-        items = items.filter(i => i.id !== record.id);
-        items.unshift(item);
-        localStorage.setItem('pdf2link_saved', JSON.stringify(items));
-        updateHistoryCount();
+        const user = await ensureCloudAuth();
+        if (user && db) {
+          const histRef = doc(db, 'artifacts', STATE.activeAppId, 'users', user.uid, 'pdf_history', record.id);
+          await setDoc(histRef, {
+            id: record.id,
+            name: record.name,
+            size: record.size,
+            date: record.date,
+            shareUrl: record.shareUrl,
+            timestamp: Date.now()
+          });
+          updateHistoryCount();
+        }
+      } catch (e) {
+        console.warn("History save error:", e);
+      }
+    }
+
+    async function updateHistoryCount() {
+      try {
+        const user = await ensureCloudAuth();
+        if (!user || !db) return;
+        const histCol = collection(db, 'artifacts', STATE.activeAppId, 'users', user.uid, 'pdf_history');
+        const snaps = await getDocs(histCol);
+        const count = snaps.size;
+        const badge = document.getElementById('navHistoryCount');
+        if (count > 0) {
+          badge.innerText = count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
       } catch (e) {}
     }
 
-    function updateHistoryCount() {
-      const items = JSON.parse(localStorage.getItem('pdf2link_saved') || '[]');
-      const badge = document.getElementById('navHistoryCount');
-      if (items.length > 0) {
-        badge.innerText = items.length;
-        badge.classList.remove('hidden');
-      } else {
-        badge.classList.add('hidden');
-      }
-    }
-
-    function renderHistoryList() {
+    async function renderHistoryList() {
       const container = document.getElementById('historyListContainer');
       const empty = document.getElementById('emptyHistoryNotice');
-      const items = JSON.parse(localStorage.getItem('pdf2link_saved') || '[]');
 
-      if (items.length === 0) {
-        container.innerHTML = '';
-        empty.classList.remove('hidden');
-        return;
+      try {
+        const user = await ensureCloudAuth();
+        if (!user || !db) {
+          empty.classList.remove('hidden');
+          container.innerHTML = '';
+          return;
+        }
+
+        const histCol = collection(db, 'artifacts', STATE.activeAppId, 'users', user.uid, 'pdf_history');
+        const snaps = await getDocs(histCol);
+
+        if (snaps.empty) {
+          container.innerHTML = '';
+          empty.classList.remove('hidden');
+          return;
+        }
+
+        empty.classList.add('hidden');
+        const items = [];
+        snaps.forEach(docSnap => items.push(docSnap.data()));
+        items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        container.innerHTML = items.map(item => `
+          <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-zinc-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div class="min-w-0">
+              <h3 class="font-medium text-zinc-900 truncate">${item.name}</h3>
+              <p class="text-zinc-400 mt-0.5">${formatBytes(item.size)} &bull; ${item.date || ''}</p>
+            </div>
+            <div class="flex items-center space-x-2 w-full sm:w-auto justify-end shrink-0">
+              <button onclick="copySpecificUrl('${item.shareUrl}')" class="px-2.5 py-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-700 transition-colors">
+                Copiar
+              </button>
+              <button onclick="openHistoryDoc('${item.id}')" class="px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors">
+                Ver
+              </button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.warn("Render history error:", e);
       }
-
-      empty.classList.add('hidden');
-      container.innerHTML = items.map(item => `
-        <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-zinc-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div class="min-w-0">
-            <h3 class="font-medium text-zinc-900 truncate">${item.name}</h3>
-            <p class="text-zinc-400 mt-0.5">${formatBytes(item.size)} &bull; ${item.date}</p>
-          </div>
-          <div class="flex items-center space-x-2 w-full sm:w-auto justify-end shrink-0">
-            <button onclick="copySpecificUrl('${item.shareUrl}')" class="px-2.5 py-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-700 transition-colors">
-              Copiar
-            </button>
-            <button onclick="openHistoryDoc('${item.id}')" class="px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors">
-              Ver
-            </button>
-            <button onclick="deleteHistoryItem('${item.id}')" class="px-2 py-1.5 text-zinc-400 hover:text-zinc-700 transition-colors">
-              Borrar
-            </button>
-          </div>
-        </div>
-      `).join('');
     }
 
     function openHistoryDoc(id) {
       window.location.hash = `doc=${id}`;
       resolveDocFromHash();
-    }
-
-    function deleteHistoryItem(id) {
-      let items = JSON.parse(localStorage.getItem('pdf2link_saved') || '[]');
-      items = items.filter(i => i.id !== id);
-      localStorage.setItem('pdf2link_saved', JSON.stringify(items));
-      renderHistoryList();
-      updateHistoryCount();
-    }
-
-    function clearAllHistory() {
-      localStorage.removeItem('pdf2link_saved');
-      renderHistoryList();
-      updateHistoryCount();
     }
 
     function copySpecificUrl(url) {
@@ -1115,6 +1263,7 @@
       }, 3000);
     }
 
+    // Window globals for inline HTML event handlers
     window.showUploaderView = showUploaderView;
     window.showHistoryView = showHistoryView;
     window.copyShareLink = copyShareLink;
@@ -1123,25 +1272,29 @@
     window.exitPurePdfView = exitPurePdfView;
     window.changePureZoom = changePureZoom;
     window.openHistoryDoc = openHistoryDoc;
-    window.deleteHistoryItem = deleteHistoryItem;
-    window.clearAllHistory = clearAllHistory;
     window.copySpecificUrl = copySpecificUrl;
     window.openDomainModal = openDomainModal;
     window.closeDomainModal = closeDomainModal;
     window.saveCustomDomain = saveCustomDomain;
     window.downloadQrImage = downloadQrImage;
+    window.retryCurrentDocument = retryCurrentDocument;
 
-    // Listen to hash changes (for link opening and QR scanner redirects)
+    // Listen to hash and popstate changes
     window.addEventListener('hashchange', resolveDocFromHash);
     window.addEventListener('popstate', resolveDocFromHash);
 
-    // Initial boot
-    window.addEventListener('DOMContentLoaded', async () => {
-      await initLocalCache();
-      ensureCloudAuth();
+    async function bootApp() {
+      await ensureCloudAuth();
       updateHistoryCount();
       resolveDocFromHash();
-    });
+    }
+
+    // Ensure immediate execution if DOM is already ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootApp);
+    } else {
+      bootApp();
+    }
   </script>
 </body>
 </html>
