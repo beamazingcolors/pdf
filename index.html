@@ -171,18 +171,15 @@
           <div class="flex flex-col items-center justify-center p-3 bg-zinc-50 rounded-xl border border-zinc-100">
             <div id="qrcodeWrapper" class="bg-white p-2.5 rounded-xl border border-zinc-200 shadow-sm"></div>
             <span class="text-[11px] text-zinc-500 mt-2 text-center font-medium">Escanea con tu cámara para abrir el PDF</span>
-            <button onclick="downloadQrImage()" class="mt-2 text-[10px] text-zinc-500 hover:text-zinc-900 underline flex items-center space-x-1">
-              <span>Descargar código QR (PNG)</span>
-            </button>
           </div>
 
           <div class="flex flex-col space-y-2">
             <button onclick="openCurrentDocumentNow()" class="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors text-center">
               Ver PDF ahora
             </button>
-            <a id="btnShareWhatsApp" target="_blank" rel="noopener noreferrer" class="w-full py-2 px-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-medium transition-colors text-center">
-              Compartir en WhatsApp
-            </a>
+            <button onclick="downloadQrImage()" class="w-full py-2.5 px-3 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-800 text-xs font-medium transition-colors text-center flex items-center justify-center space-x-1.5">
+              <span>Descargar QR</span>
+            </button>
             <button onclick="resetUploader()" class="w-full py-2 text-xs text-zinc-400 hover:text-zinc-700 transition-colors text-center">
               Subir otro PDF
             </button>
@@ -552,9 +549,6 @@
         document.getElementById('generatedLinkInput').value = newUrl;
         document.getElementById('currentBaseUrlDisplay').innerText = getResolvedBaseUrl();
         renderQrCode(newUrl);
-
-        const whatsappText = encodeURIComponent(`Aquí tienes el enlace para ver el PDF "${STATE.currentDocTitle}": `) + encodeURIComponent(newUrl);
-        document.getElementById('btnShareWhatsApp').href = `https://api.whatsapp.com/send?text=${whatsappText}`;
       }
     }
 
@@ -717,9 +711,6 @@
 
       // Render crisp scannable QR Code
       renderQrCode(record.shareUrl);
-
-      const whatsappText = encodeURIComponent(`Aquí tienes el enlace para ver el PDF "${record.name}": `) + encodeURIComponent(record.shareUrl);
-      document.getElementById('btnShareWhatsApp').href = `https://api.whatsapp.com/send?text=${whatsappText}`;
 
       const card = document.getElementById('resultCard');
       card.classList.remove('hidden');
