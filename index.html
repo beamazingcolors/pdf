@@ -72,7 +72,7 @@
   <header id="mainAppHeader" class="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-30">
     <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
       <div class="flex items-center space-x-2 cursor-pointer" onclick="showUploaderView()">
-        <span class="font-bold text-base tracking-tight">SolyMar <span class="text-zinc-400 font-normal">PDFlinks</span></span>
+        <span class="font-bold text-base tracking-tight text-zinc-900">SolyMar <span class="text-zinc-400 font-normal">PDFlinks</span></span>
       </div>
 
       <nav class="flex items-center space-x-2 text-xs">
@@ -94,9 +94,9 @@
   <div id="loadingOverlay" class="hidden fixed inset-0 z-50 bg-[#323639] flex flex-col items-center justify-center p-6 text-center">
     <div id="loadingSpinner" class="w-9 h-9 border-2 border-zinc-500 border-t-white rounded-full animate-spin mb-4"></div>
     <p id="loadingOverlayText" class="text-xs text-zinc-300 font-medium tracking-wide">Cargando documento...</p>
-    <p id="loadingOverlaySubtext" class="text-[11px] text-zinc-500 mt-1 max-w-xs">Obteniendo páginas desde la nube...</p>
+    <p id="loadingOverlaySubtext" class="text-[11px] text-zinc-500 mt-1 max-w-xs">Preparando páginas para visualización...</p>
 
-    <!-- Error State Box (hidden by default) -->
+    <!-- Error State Box -->
     <div id="loadingErrorBox" class="hidden flex-col items-center max-w-sm mt-4 p-5 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-3">
       <div class="w-8 h-8 rounded-full bg-rose-950/60 border border-rose-800/40 flex items-center justify-center text-rose-300 text-sm font-bold">
         !
@@ -120,7 +120,7 @@
     <!-- UPLOADER VIEW -->
     <div id="viewUploader" class="space-y-8">
       
-      <!-- Minimal Header Text -->
+      <!-- Minimalist Header -->
       <div class="text-center max-w-md mx-auto space-y-2">
         <h1 class="text-2xl font-semibold tracking-tight text-zinc-900">
           Convierte tu PDF en un enlace
@@ -133,14 +133,14 @@
       <!-- Drag & Drop Zone -->
       <div class="max-w-lg mx-auto">
         <div id="dropZone" class="relative border border-dashed border-zinc-300 hover:border-zinc-700 rounded-2xl p-8 sm:p-12 text-center bg-white transition-all cursor-pointer">
-          <input type="file" id="pdfFileInput" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+          <input type="file" id="pdfFileInput" accept="application/pdf" onclick="this.value = null;" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
           
           <div class="flex flex-col items-center justify-center space-y-2 pointer-events-none">
             <p class="text-sm font-medium text-zinc-800">
               Arrastra tu PDF aquí o <span class="underline underline-offset-4 text-zinc-900">selecciona un archivo</span>
             </p>
             <p class="text-xs text-zinc-400">
-              Hasta 20 MB
+              Hasta 25 MB
             </p>
           </div>
         </div>
@@ -158,7 +158,7 @@
       </div>
 
       <!-- Result Card -->
-      <div id="resultCard" class="hidden max-w-lg mx-auto bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 space-y-6">
+      <div id="resultCard" class="hidden max-w-lg mx-auto bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
         <div>
           <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Enlace generado</span>
           <h2 id="resFileName" class="text-sm sm:text-base font-semibold text-zinc-900 truncate mt-0.5">documento.pdf</h2>
@@ -175,11 +175,11 @@
           </div>
           <!-- Base domain badge and quick config -->
           <div class="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
-            <span class="flex items-center space-x-1.5">
+            <span class="flex items-center space-x-1.5 truncate">
               <span>Destino:</span>
-              <span id="currentBaseUrlDisplay" class="font-mono text-zinc-800 font-medium truncate max-w-[200px] sm:max-w-xs"></span>
+              <span id="currentBaseUrlDisplay" class="font-mono text-zinc-800 font-medium truncate max-w-[190px] sm:max-w-xs"></span>
             </span>
-            <button type="button" onclick="openDomainModal()" class="text-zinc-900 underline hover:text-black font-medium">
+            <button type="button" onclick="openDomainModal()" class="text-zinc-900 underline hover:text-black font-medium shrink-0 ml-2">
               Cambiar dominio
             </button>
           </div>
@@ -188,7 +188,7 @@
         <!-- QR Code & Direct Actions -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-100 items-center">
           <div class="flex flex-col items-center justify-center p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-            <div id="qrcodeWrapper" class="bg-white p-2.5 rounded-xl border border-zinc-200 shadow-sm"></div>
+            <div id="qrcodeWrapper" class="bg-white p-2.5 rounded-xl border border-zinc-200 shadow-sm flex items-center justify-center min-h-[160px] min-w-[160px]"></div>
             <span class="text-[11px] text-zinc-500 mt-2 text-center font-medium">Escanea con tu cámara para abrir el PDF</span>
           </div>
 
@@ -323,7 +323,7 @@
   <script type="module">
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Application state
     const STATE = {
@@ -344,12 +344,91 @@
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
+    // --- High-Capacity Local Vault (IndexedDB) ---
+    const DB_NAME = 'SolyMarPDFlinks_Vault';
+    const DB_VERSION = 1;
+    const DB_STORE = 'documents';
+
+    function openIndexedDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(DB_STORE)) {
+            db.createObjectStore(DB_STORE, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbSaveDoc(record) {
+      try {
+        const db = await openIndexedDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          const store = tx.objectStore(DB_STORE);
+          const req = store.put(record);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (e) {
+        console.warn("IndexedDB save error:", e);
+        return false;
+      }
+    }
+
+    async function idbGetDoc(docId) {
+      try {
+        const db = await openIndexedDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction(DB_STORE, 'readonly');
+          const store = tx.objectStore(DB_STORE);
+          const req = store.get(docId);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function idbGetAllDocs() {
+      try {
+        const db = await openIndexedDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction(DB_STORE, 'readonly');
+          const store = tx.objectStore(DB_STORE);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        });
+      } catch (e) {
+        return [];
+      }
+    }
+
+    async function idbDeleteDoc(docId) {
+      try {
+        const db = await openIndexedDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          const store = tx.objectStore(DB_STORE);
+          const req = store.delete(docId);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+        });
+      } catch (e) {
+        return false;
+      }
+    }
+
     let db = null;
     let auth = null;
     let authUser = null;
     let authPromise = null;
 
-    // Helper to safely serialize configuration for cross-device links and QR codes
     function serializeConfig(cfg) {
       if (!cfg) return '';
       try {
@@ -405,7 +484,6 @@
           }
 
           if (!firebaseConfig) {
-            console.warn("No cloud configuration available.");
             return null;
           }
 
@@ -414,7 +492,6 @@
             sessionStorage.setItem('solymar_fb_cfg', JSON.stringify(firebaseConfig));
           } catch (e) {}
 
-          // Initialize Firebase client
           const apps = getApps();
           const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
           auth = getAuth(app);
@@ -436,7 +513,7 @@
 
           return authUser;
         } catch (err) {
-          console.error("Cloud Auth Error:", err);
+          console.warn("Cloud connection not ready or offline:", err);
           return null;
         } finally {
           authPromise = null;
@@ -449,69 +526,71 @@
     const CHUNK_SIZE = 550000; // ~550KB chunks to safely fit Firestore 1MB document limit
 
     async function uploadPdfToCloud(docId, fileName, fileSize, base64Data) {
-      const user = await ensureCloudAuth();
-      if (!user || !db) {
-        throw new Error("No se pudo conectar al almacenamiento en la nube.");
-      }
+      try {
+        const user = await ensureCloudAuth();
+        if (!user || !db) {
+          return false;
+        }
 
-      const appId = STATE.activeAppId;
+        const appId = STATE.activeAppId;
 
-      // Optimization: If document is <= 650KB, store data directly in 1 document
-      if (base64Data.length <= CHUNK_SIZE) {
+        // Optimization: If document is <= 650KB, store data directly in 1 document
+        if (base64Data.length <= CHUNK_SIZE) {
+          const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
+          await setDoc(metaDocRef, {
+            id: docId,
+            name: fileName,
+            size: fileSize,
+            totalChunks: 1,
+            inlineData: base64Data,
+            uploadedAt: Date.now()
+          });
+          return true;
+        }
+
+        // For larger documents: slice into chunks (RULE 1 strictly adhered)
+        const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+        const chunkUploads = [];
+
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const chunkDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
+          chunkUploads.push(setDoc(chunkDocRef, {
+            chunkIndex: i,
+            data: chunkData
+          }));
+        }
+
+        await Promise.all(chunkUploads);
+
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
         await setDoc(metaDocRef, {
           id: docId,
           name: fileName,
           size: fileSize,
-          totalChunks: 1,
-          inlineData: base64Data,
+          totalChunks: totalChunks,
           uploadedAt: Date.now()
         });
+
         return true;
+      } catch (err) {
+        console.warn("Cloud upload warning:", err);
+        return false;
       }
-
-      // For larger documents: slice into chunks (RULE 1 strictly adhered)
-      const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-      const chunkUploads = [];
-
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-        const chunkDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
-        chunkUploads.push(setDoc(chunkDocRef, {
-          chunkIndex: i,
-          data: chunkData
-        }));
-      }
-
-      await Promise.all(chunkUploads);
-
-      const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
-      await setDoc(metaDocRef, {
-        id: docId,
-        name: fileName,
-        size: fileSize,
-        totalChunks: totalChunks,
-        uploadedAt: Date.now()
-      });
-
-      return true;
     }
 
     async function fetchPdfFromCloud(docId, customConfig = null, customAppId = null) {
-      const user = await ensureCloudAuth(customConfig, customAppId);
-      if (!user || !db) {
-        console.warn("fetchPdfFromCloud: No user or db available");
-        return null;
-      }
-
-      const appId = customAppId || STATE.activeAppId;
-
       try {
+        const user = await ensureCloudAuth(customConfig, customAppId);
+        if (!user || !db) {
+          return null;
+        }
+
+        const appId = customAppId || STATE.activeAppId;
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
         const metaSnap = await getDoc(metaDocRef);
 
         if (!metaSnap.exists()) {
-          console.warn("Document not found in Firestore:", docId);
           return null;
         }
 
@@ -557,7 +636,7 @@
           dataUrl: 'data:application/pdf;base64,' + fullBase64
         };
       } catch (err) {
-        console.error("Cloud fetch error:", err);
+        console.warn("Cloud fetch warning:", err);
         return null;
       }
     }
@@ -649,38 +728,43 @@
     function renderQrCode(textToEncode) {
       const qrWrapper = document.getElementById('qrcodeWrapper');
       qrWrapper.innerHTML = '';
-      new QRCode(qrWrapper, {
-        text: textToEncode,
-        width: 140,
-        height: 140,
-        colorDark: "#09090b",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
-      });
+      try {
+        new QRCode(qrWrapper, {
+          text: textToEncode,
+          width: 150,
+          height: 150,
+          colorDark: "#09090b",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch (e) {
+        console.error("QR Code generation error:", e);
+      }
     }
 
     function downloadQrImage() {
       const qrWrapper = document.getElementById('qrcodeWrapper');
-      const img = qrWrapper.querySelector('img');
       const canvas = qrWrapper.querySelector('canvas');
-      let url = '';
+      const img = qrWrapper.querySelector('img');
+      let dataUrl = '';
 
-      if (img && img.src) {
-        url = img.src;
-      } else if (canvas) {
-        url = canvas.toDataURL('image/png');
+      if (canvas) {
+        dataUrl = canvas.toDataURL('image/png');
+      } else if (img && img.src && img.src.startsWith('data:image')) {
+        dataUrl = img.src;
       }
 
-      if (url) {
+      if (dataUrl) {
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `QR_${STATE.currentDocTitle || 'documento'}.png`;
+        a.href = dataUrl;
+        const cleanName = (STATE.currentDocTitle || 'documento').replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_\-]/g, '_');
+        a.download = `QR_${cleanName}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         showToast('Código QR descargado', 'info');
       } else {
-        showToast('No se pudo descargar el QR', 'error');
+        showToast('No se pudo descargar el QR. Intenta de nuevo', 'error');
       }
     }
 
@@ -714,13 +798,15 @@
     });
 
     async function processPdfFile(file) {
-      if (!file || file.type !== 'application/pdf') {
-        showToast('Selecciona un archivo PDF válido', 'error');
+      if (!file) return;
+
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        showToast('Por favor selecciona un archivo PDF válido', 'error');
         return;
       }
 
-      if (file.size > 20 * 1024 * 1024) {
-        showToast('El archivo supera los 20 MB.', 'error');
+      if (file.size > 25 * 1024 * 1024) {
+        showToast('El archivo supera los 25 MB.', 'error');
         return;
       }
 
@@ -734,28 +820,28 @@
       percentText.innerText = '15%';
       statusText.innerText = 'Leyendo archivo PDF...';
 
-      // Pre-authenticate cloud
-      await ensureCloudAuth();
-
       const reader = new FileReader();
+
+      reader.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const pct = Math.min(Math.round((evt.loaded / evt.total) * 45), 45);
+          progressBar.style.width = pct + '%';
+          percentText.innerText = pct + '%';
+        }
+      };
 
       reader.onload = async (evt) => {
         try {
-          progressBar.style.width = '45%';
-          percentText.innerText = '45%';
-          statusText.innerText = 'Preparando documento...';
+          progressBar.style.width = '55%';
+          percentText.innerText = '55%';
+          statusText.innerText = 'Procesando documento...';
 
-          const arrayBuffer = evt.target.result;
-          const bytes = new Uint8Array(arrayBuffer);
-          let binary = '';
-          const len = bytes.byteLength;
-          for (let i = 0; i < len; i += 8192) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)));
+          const dataUrl = evt.target.result;
+          if (!dataUrl || typeof dataUrl !== 'string') {
+            throw new Error("No se pudo leer el archivo");
           }
-          const base64Data = btoa(binary);
-          const dataUrl = 'data:application/pdf;base64,' + base64Data;
 
-          const docId = 'doc_' + Math.random().toString(36).substring(2, 7) + Date.now().toString(36).slice(-4);
+          const docId = 'doc_' + Math.random().toString(36).substring(2, 8) + Date.now().toString(36).slice(-4);
           const shareUrl = buildShareUrl(docId);
 
           const record = {
@@ -764,26 +850,32 @@
             size: file.size,
             date: new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
             dataUrl: dataUrl,
-            shareUrl: shareUrl
+            shareUrl: shareUrl,
+            timestamp: Date.now()
           };
 
-          // Cache in memory for instant local rendering
+          // 1. Instant save to in-memory cache
           STATE.docMemoryCache.set(docId, record);
 
-          progressBar.style.width = '70%';
-          percentText.innerText = '70%';
-          statusText.innerText = 'Sincronizando con la nube para acceso universal...';
+          // 2. High-capacity local vault storage (IndexedDB)
+          await idbSaveDoc(record);
 
-          // Upload to Firestore
-          const uploadSuccess = await uploadPdfToCloud(docId, file.name, file.size, base64Data);
+          progressBar.style.width = '80%';
+          percentText.innerText = '80%';
+          statusText.innerText = 'Generando enlace y QR...';
 
-          if (!uploadSuccess) {
-            throw new Error("No se pudo completar la sincronización.");
+          // 3. Cloud synchronization in background if available
+          const commaIndex = dataUrl.indexOf(',');
+          if (commaIndex > -1) {
+            const rawBase64 = dataUrl.substring(commaIndex + 1);
+            uploadPdfToCloud(docId, file.name, file.size, rawBase64).catch(err => {
+              console.warn("Background cloud upload skipped:", err);
+            });
           }
 
           progressBar.style.width = '100%';
           percentText.innerText = '100%';
-          statusText.innerText = '¡Enlace generado!';
+          statusText.innerText = '¡Listo!';
 
           // Save to user history
           saveHistoryItem(record);
@@ -791,20 +883,20 @@
           setTimeout(() => {
             progressContainer.classList.add('hidden');
             showResult(record);
-          }, 350);
+          }, 250);
         } catch (uploadErr) {
           console.error("Upload error:", uploadErr);
           progressContainer.classList.add('hidden');
-          showToast('Error al subir: ' + (uploadErr.message || 'Intente nuevamente'), 'error');
+          showToast('Error al procesar el PDF: ' + (uploadErr.message || 'Intenta nuevamente'), 'error');
         }
       };
 
       reader.onerror = () => {
         progressContainer.classList.add('hidden');
-        showToast('Error al leer el archivo PDF.', 'error');
+        showToast('Error al leer el archivo PDF localmente.', 'error');
       };
 
-      reader.readAsArrayBuffer(file);
+      reader.readAsDataURL(file);
     }
 
     function showResult(record) {
@@ -1033,7 +1125,7 @@
       let cfgToken = null;
       let targetAppId = null;
 
-      // 1. Extract from hash or search query
+      // 1. Extract from hash or query
       const hashContent = window.location.hash ? window.location.hash.substring(1) : '';
       if (hashContent) {
         const hashParams = new URLSearchParams(hashContent);
@@ -1056,7 +1148,6 @@
         return;
       }
 
-      // Check if custom cloud config was supplied in URL
       let decodedConfig = null;
       if (cfgToken) {
         decodedConfig = deserializeConfig(cfgToken);
@@ -1079,13 +1170,22 @@
         // Step 1: Check in-memory cache
         let record = STATE.docMemoryCache.get(docId);
 
-        // Step 2: Fetch from Firestore
+        // Step 2: Check local IndexedDB vault
+        if (!record || !record.dataUrl) {
+          record = await idbGetDoc(docId);
+          if (record && record.dataUrl) {
+            STATE.docMemoryCache.set(docId, record);
+          }
+        }
+
+        // Step 3: Fetch from Cloud if not local
         if (!record || !record.dataUrl) {
           overlaySubtext.innerText = 'Descargando desde la nube...';
           record = await fetchPdfFromCloud(docId, decodedConfig, targetAppId);
 
           if (record && record.dataUrl) {
             STATE.docMemoryCache.set(docId, record);
+            await idbSaveDoc(record);
           }
         }
 
@@ -1093,7 +1193,6 @@
           overlay.classList.add('hidden');
           await renderPurePdfViewer(record.dataUrl, record.name, record.id);
         } else {
-          // Show error state with clear retry button
           spinner.classList.add('hidden');
           errorBox.classList.remove('hidden');
           overlayText.innerText = 'No se encontró el documento';
@@ -1146,21 +1245,18 @@
             shareUrl: record.shareUrl,
             timestamp: Date.now()
           });
-          updateHistoryCount();
         }
       } catch (e) {
-        console.warn("History save error:", e);
+        console.warn("Cloud history save warning:", e);
       }
+      updateHistoryCount();
     }
 
     async function updateHistoryCount() {
       try {
-        const user = await ensureCloudAuth();
-        if (!user || !db) return;
-        const histCol = collection(db, 'artifacts', STATE.activeAppId, 'users', user.uid, 'pdf_history');
-        const snaps = await getDocs(histCol);
-        const count = snaps.size;
+        const localItems = await idbGetAllDocs();
         const badge = document.getElementById('navHistoryCount');
+        const count = localItems.length;
         if (count > 0) {
           badge.innerText = count;
           badge.classList.remove('hidden');
@@ -1175,25 +1271,15 @@
       const empty = document.getElementById('emptyHistoryNotice');
 
       try {
-        const user = await ensureCloudAuth();
-        if (!user || !db) {
-          empty.classList.remove('hidden');
-          container.innerHTML = '';
-          return;
-        }
+        const items = await idbGetAllDocs();
 
-        const histCol = collection(db, 'artifacts', STATE.activeAppId, 'users', user.uid, 'pdf_history');
-        const snaps = await getDocs(histCol);
-
-        if (snaps.empty) {
+        if (!items || items.length === 0) {
           container.innerHTML = '';
           empty.classList.remove('hidden');
           return;
         }
 
         empty.classList.add('hidden');
-        const items = [];
-        snaps.forEach(docSnap => items.push(docSnap.data()));
         items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
         container.innerHTML = items.map(item => `
@@ -1232,8 +1318,20 @@
       showToast('Liga copiada', 'info');
     }
 
+    async function clearAllHistory() {
+      try {
+        const items = await idbGetAllDocs();
+        for (const item of items) {
+          await idbDeleteDoc(item.id);
+        }
+        renderHistoryList();
+        updateHistoryCount();
+        showToast('Historial limpio', 'info');
+      } catch (e) {}
+    }
+
     function formatBytes(bytes) {
-      if (bytes === 0) return '0 Bytes';
+      if (!bytes || bytes === 0) return '0 Bytes';
       const k = 1024;
       const sizes = ['Bytes', 'KB', 'MB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -1273,6 +1371,7 @@
     window.changePureZoom = changePureZoom;
     window.openHistoryDoc = openHistoryDoc;
     window.copySpecificUrl = copySpecificUrl;
+    window.clearAllHistory = clearAllHistory;
     window.openDomainModal = openDomainModal;
     window.closeDomainModal = closeDomainModal;
     window.saveCustomDomain = saveCustomDomain;
@@ -1289,7 +1388,6 @@
       resolveDocFromHash();
     }
 
-    // Ensure immediate execution if DOM is already ready
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', bootApp);
     } else {
