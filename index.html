@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF2Link — Convertidor Minimalista de PDF a Enlaces</title>
+  <title>PDF2Link — Convertidor de PDF a Enlaces</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,64 +19,69 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-          }
-        }
-      }
-    };
-  </script>
-
   <style>
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background-color: #fafafa;
       color: #09090b;
+      -webkit-font-smoothing: antialiased;
     }
 
     .drag-hover {
-      border-color: #09090b !important;
+      border-color: #18181b !important;
       background-color: #f4f4f5 !important;
     }
 
+    /* Custom subtle scrollbars */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #fafafa;
+      background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-      background: #e4e4e7;
+      background: rgba(161, 161, 170, 0.4);
       border-radius: 9999px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: #d4d4d8;
+      background: rgba(113, 113, 122, 0.6);
+    }
+
+    /* Print styles */
+    @media print {
+      #floatingControlsPill, #toastContainer, header, footer {
+        display: none !important;
+      }
+      body, #pdfPureViewer, #pdfScrollContainer {
+        background: white !important;
+        overflow: visible !important;
+      }
+      .pdf-page-wrapper {
+        box-shadow: none !important;
+        margin: 0 !important;
+        page-break-after: always;
+      }
     }
   </style>
 </head>
 
-<body class="min-h-screen flex flex-col antialiased bg-[#fafafa] text-zinc-900">
+<body class="min-h-screen flex flex-col bg-[#fafafa] text-zinc-900 transition-colors duration-200">
 
-  <!-- Minimal Header -->
-  <header class="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-30">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-      <div class="flex items-center space-x-2 cursor-pointer" onclick="switchView('uploader')">
-        <span class="font-bold text-base tracking-tight">PDF<span class="text-zinc-500 font-normal">2Link</span></span>
+  <!-- Main Header: visible ONLY when creating or managing links -->
+  <header id="mainAppHeader" class="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center space-x-2 cursor-pointer" onclick="showUploaderView()">
+        <span class="font-bold text-base tracking-tight">PDF<span class="text-zinc-400 font-normal">2Link</span></span>
       </div>
 
-      <nav class="flex items-center space-x-1 sm:space-x-3 text-xs sm:text-sm">
-        <button id="navBtnUpload" onclick="switchView('uploader')" class="px-3 py-1.5 rounded-lg text-zinc-900 font-medium hover:bg-zinc-100 transition-colors">
+      <nav class="flex items-center space-x-2 text-xs">
+        <button id="navBtnUpload" onclick="showUploaderView()" class="px-3 py-1.5 rounded-lg text-zinc-900 font-medium hover:bg-zinc-100 transition-colors">
           Subir
         </button>
-        <button id="navBtnHistory" onclick="switchView('history')" class="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors flex items-center space-x-1.5">
+        <button id="navBtnHistory" onclick="showHistoryView()" class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors flex items-center space-x-1.5">
           <span>Mis Enlaces</span>
-          <span id="navHistoryCount" class="hidden text-[10px] bg-zinc-200 text-zinc-800 font-medium px-1.5 py-0.5 rounded-full">0</span>
+          <span id="navHistoryCount" class="hidden text-[10px] bg-zinc-200 text-zinc-800 font-medium px-1.5 py-0.2 rounded-full">0</span>
         </button>
       </nav>
     </div>
@@ -85,46 +90,46 @@
   <!-- Notification Toast Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
-  <!-- Loading Overlay for Document Fetching -->
-  <div id="loadingOverlay" class="hidden fixed inset-0 z-40 bg-white/90 backdrop-blur-xs flex flex-col items-center justify-center p-4">
-    <div class="w-6 h-6 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin mb-3"></div>
-    <p id="loadingOverlayText" class="text-xs sm:text-sm text-zinc-600 font-medium">Cargando documento...</p>
+  <!-- Loading State Indicator -->
+  <div id="loadingOverlay" class="hidden fixed inset-0 z-50 bg-[#323639] flex flex-col items-center justify-center p-4">
+    <div class="w-8 h-8 border-2 border-zinc-500 border-t-white rounded-full animate-spin mb-3"></div>
+    <p id="loadingOverlayText" class="text-xs text-zinc-300 font-medium tracking-wide">Cargando PDF...</p>
   </div>
 
-  <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-14">
+  <main id="mainAppContent" class="flex-1 max-w-3xl w-full mx-auto px-4 py-10 sm:py-16">
 
-    <!-- VIEW 1: UPLOADER -->
+    <!-- UPLOADER VIEW -->
     <div id="viewUploader" class="space-y-8">
       
-      <!-- Minimalist Header Title -->
-      <div class="text-center max-w-xl mx-auto space-y-2">
-        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-900">
-          Convierte tu PDF en un enlace web
+      <!-- Minimal Header Text -->
+      <div class="text-center max-w-md mx-auto space-y-2">
+        <h1 class="text-2xl font-semibold tracking-tight text-zinc-900">
+          Convierte tu PDF en un enlace
         </h1>
-        <p class="text-xs sm:text-sm text-zinc-500">
-          Genera una liga pública y código QR para abrir o compartir tu documento desde cualquier navegador o teléfono.
+        <p class="text-xs text-zinc-500 leading-relaxed">
+          Sube tu documento y obtén una liga o código QR. Quien lo abra verá directamente el PDF en cualquier navegador.
         </p>
       </div>
 
       <!-- Drag & Drop Zone -->
-      <div class="max-w-xl mx-auto">
-        <div id="dropZone" class="relative border border-dashed border-zinc-300 hover:border-zinc-500 rounded-2xl p-8 sm:p-12 text-center bg-white transition-all cursor-pointer">
+      <div class="max-w-lg mx-auto">
+        <div id="dropZone" class="relative border border-dashed border-zinc-300 hover:border-zinc-700 rounded-2xl p-8 sm:p-12 text-center bg-white transition-all cursor-pointer">
           <input type="file" id="pdfFileInput" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
           
-          <div class="flex flex-col items-center justify-center space-y-3 pointer-events-none">
+          <div class="flex flex-col items-center justify-center space-y-2 pointer-events-none">
             <p class="text-sm font-medium text-zinc-800">
-              Arrastra tu PDF aquí o <span class="underline underline-offset-4 text-zinc-900">explora tus archivos</span>
+              Arrastra tu PDF aquí o <span class="underline underline-offset-4 text-zinc-900">selecciona un archivo</span>
             </p>
             <p class="text-xs text-zinc-400">
-              Archivos PDF de hasta 15 MB
+              Hasta 20 MB
             </p>
           </div>
         </div>
 
-        <!-- Upload Progress -->
+        <!-- Progress Indicator -->
         <div id="uploadProgressContainer" class="hidden mt-4 p-4 bg-white border border-zinc-200 rounded-xl space-y-2">
           <div class="flex items-center justify-between text-xs text-zinc-600">
-            <span id="uploadStatusText">Procesando y sincronizando enlace...</span>
+            <span id="uploadStatusText">Procesando archivo...</span>
             <span id="uploadPercentText" class="font-mono">0%</span>
           </div>
           <div class="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
@@ -133,40 +138,40 @@
         </div>
       </div>
 
-      <!-- Link & QR Result Card -->
-      <div id="resultCard" class="hidden max-w-xl mx-auto bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 space-y-6">
+      <!-- Result Card -->
+      <div id="resultCard" class="hidden max-w-lg mx-auto bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 space-y-6">
         <div>
-          <span class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Enlace generado</span>
-          <h2 id="resFileName" class="text-base font-semibold text-zinc-900 truncate mt-0.5">documento.pdf</h2>
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Enlace generado</span>
+          <h2 id="resFileName" class="text-sm sm:text-base font-semibold text-zinc-900 truncate mt-0.5">documento.pdf</h2>
         </div>
 
-        <!-- Direct Link Field -->
+        <!-- Shareable Link Field -->
         <div class="space-y-1.5">
           <label class="block text-xs text-zinc-500 font-medium">Liga pública para compartir</label>
           <div class="flex items-center gap-2">
-            <input type="text" id="generatedLinkInput" readonly class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-800 focus:outline-none select-all">
+            <input type="text" id="generatedLinkInput" readonly class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-800 focus:outline-none select-all">
             <button onclick="copyShareLink()" class="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-medium transition-colors shrink-0">
               Copiar
             </button>
           </div>
         </div>
 
-        <!-- QR Code & Quick Actions -->
+        <!-- QR Code & Direct Actions -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-100 items-center">
           <div class="flex flex-col items-center justify-center p-3 bg-zinc-50 rounded-xl border border-zinc-100">
             <div id="qrcodeWrapper" class="bg-white p-2 rounded-lg border border-zinc-200"></div>
-            <span class="text-[11px] text-zinc-400 mt-2">Escanea con tu cámara</span>
+            <span class="text-[11px] text-zinc-400 mt-2">Escanea para abrir el PDF</span>
           </div>
 
           <div class="flex flex-col space-y-2">
-            <button onclick="openViewerDirectly()" class="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors text-center">
-              Abrir en visor web
+            <button onclick="openCurrentDocumentNow()" class="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors text-center">
+              Ver PDF ahora
             </button>
             <a id="btnShareWhatsApp" target="_blank" rel="noopener noreferrer" class="w-full py-2 px-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-medium transition-colors text-center">
-              Compartir por WhatsApp
+              Compartir en WhatsApp
             </a>
-            <button onclick="resetUploader()" class="w-full py-2 text-xs text-zinc-500 hover:text-zinc-800 transition-colors text-center">
-              Subir otro documento
+            <button onclick="resetUploader()" class="w-full py-2 text-xs text-zinc-400 hover:text-zinc-700 transition-colors text-center">
+              Subir otro PDF
             </button>
           </div>
         </div>
@@ -174,69 +179,23 @@
 
     </div>
 
-    <!-- VIEW 2: PDF VIEWER -->
-    <div id="viewViewer" class="hidden flex flex-col space-y-4">
-      
-      <!-- Viewer Top Bar -->
-      <div class="bg-white border border-zinc-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div class="flex items-center space-x-3 min-w-0">
-          <button onclick="switchView('uploader')" class="text-zinc-500 hover:text-zinc-900 font-medium transition-colors">
-            &larr; Volver
-          </button>
-          <span class="text-zinc-300">|</span>
-          <span id="viewerDocTitle" class="font-medium text-zinc-900 truncate max-w-[140px] sm:max-w-xs md:max-w-md">Documento.pdf</span>
-        </div>
-
-        <!-- Page Controls -->
-        <div class="flex items-center space-x-1.5">
-          <button id="btnPrevPage" onclick="changeViewerPage(-1)" class="px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30">
-            &larr;
-          </button>
-          <span class="text-zinc-600 px-1 font-mono">
-            <span id="pageNumDisplay">1</span> / <span id="pageCountDisplay">1</span>
-          </span>
-          <button id="btnNextPage" onclick="changeViewerPage(1)" class="px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30">
-            &rarr;
-          </button>
-        </div>
-
-        <!-- Zoom & Actions -->
-        <div class="flex items-center space-x-2">
-          <button onclick="changeZoom(-0.2)" class="px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50" title="Alejar">-</button>
-          <span id="zoomPercentDisplay" class="font-mono text-zinc-600 w-10 text-center">100%</span>
-          <button onclick="changeZoom(0.2)" class="px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50" title="Acercar">+</button>
-          <button onclick="copyCurrentViewerLink()" class="px-2.5 py-1 rounded border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-colors">
-            Copiar Liga
-          </button>
-          <a id="btnDownloadViewerPdf" href="#" download class="px-2.5 py-1 rounded bg-zinc-900 text-white hover:bg-zinc-800 transition-colors">
-            Descargar
-          </a>
-        </div>
-      </div>
-
-      <!-- Canvas Scroll Container -->
-      <div id="canvasScrollContainer" class="bg-zinc-100 rounded-xl p-4 sm:p-6 flex justify-center items-start min-h-[500px] overflow-auto border border-zinc-200">
-        <canvas id="thePdfCanvas" class="shadow-sm bg-white rounded max-w-full"></canvas>
-      </div>
-    </div>
-
-    <!-- VIEW 3: SAVED DOCUMENTS HISTORY -->
+    <!-- VIEW: HISTORY -->
     <div id="viewHistory" class="hidden space-y-6">
       <div class="flex items-center justify-between pb-3 border-b border-zinc-200">
         <div>
-          <h2 class="text-lg font-semibold text-zinc-900">Mis Enlaces Guardados</h2>
-          <p class="text-xs text-zinc-500">Documentos subidos en este navegador</p>
+          <h2 class="text-base font-semibold text-zinc-900">Mis Enlaces</h2>
+          <p class="text-xs text-zinc-500">Documentos subidos recientemente</p>
         </div>
-        <button onclick="clearAllHistory()" class="text-xs text-zinc-500 hover:text-zinc-900 transition-colors">
-          Limpiar historial
+        <button onclick="clearAllHistory()" class="text-xs text-zinc-400 hover:text-zinc-700 transition-colors">
+          Limpiar
         </button>
       </div>
 
       <div id="historyListContainer" class="space-y-2"></div>
 
       <div id="emptyHistoryNotice" class="hidden text-center py-12 bg-white rounded-xl border border-dashed border-zinc-200">
-        <p class="text-xs sm:text-sm text-zinc-500">Aún no has generado ningún enlace.</p>
-        <button onclick="switchView('uploader')" class="mt-3 px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium rounded-lg transition-colors">
+        <p class="text-xs text-zinc-500">Aún no has generado ningún enlace.</p>
+        <button onclick="showUploaderView()" class="mt-3 px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium rounded-lg transition-colors">
           Subir mi primer PDF
         </button>
       </div>
@@ -244,9 +203,65 @@
 
   </main>
 
-  <!-- Minimal Footer -->
-  <footer class="mt-auto border-t border-zinc-200 py-4 text-center text-[11px] text-zinc-400">
-    <p>PDF2Link — Enlaces compartibles de documentos PDF.</p>
+  <!-- PURE FULLSCREEN PDF VIEWER (Displayed when opening link or QR) -->
+  <div id="pdfPureViewer" class="hidden fixed inset-0 z-40 bg-[#323639] flex flex-col overflow-hidden">
+    
+    <!-- Scrollable container holding all pages continuously -->
+    <div id="pdfScrollContainer" class="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 flex flex-col items-center">
+      <div id="pdfPagesContainer" class="w-full flex flex-col items-center space-y-4 max-w-full"></div>
+    </div>
+
+    <!-- Minimal Floating Controls Pill: shows page counter, zoom, and download -->
+    <div id="floatingControlsPill" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 backdrop-blur-md bg-zinc-950/85 text-zinc-100 border border-white/10 shadow-2xl rounded-full px-4 py-2 flex items-center space-x-3 text-xs transition-opacity duration-300">
+      
+      <!-- Page counter -->
+      <span class="font-mono text-zinc-300 text-[11px] whitespace-nowrap">
+        Pág. <span id="floatingPageNum">1</span> / <span id="floatingPageTotal">1</span>
+      </span>
+
+      <span class="text-zinc-700">|</span>
+
+      <!-- Zoom controls -->
+      <div class="flex items-center space-x-1">
+        <button onclick="changePureZoom(-0.15)" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 text-zinc-300 active:scale-95" title="Alejar">
+          &minus;
+        </button>
+        <span id="floatingZoomLabel" class="font-mono text-[11px] w-9 text-center text-zinc-400">100%</span>
+        <button onclick="changePureZoom(0.15)" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 text-zinc-300 active:scale-95" title="Acercar">
+          &#43;
+        </button>
+      </div>
+
+      <span class="text-zinc-700">|</span>
+
+      <!-- Direct download button -->
+      <a id="floatingDownloadBtn" href="#" download="documento.pdf" class="hover:text-white text-zinc-300 transition-colors flex items-center space-x-1" title="Descargar PDF">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+        </svg>
+        <span class="hidden sm:inline text-[11px]">Descargar</span>
+      </a>
+
+      <!-- Direct print button -->
+      <button onclick="window.print()" class="hover:text-white text-zinc-300 transition-colors hidden sm:flex items-center space-x-1" title="Imprimir PDF">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+        </svg>
+      </button>
+
+      <span class="text-zinc-700">|</span>
+
+      <!-- Link to upload new document -->
+      <button onclick="exitPurePdfView()" class="text-zinc-400 hover:text-white transition-colors text-[11px]">
+        Subir PDF
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Minimal Footer for main uploader view -->
+  <footer id="mainAppFooter" class="mt-auto border-t border-zinc-200 py-4 text-center text-[11px] text-zinc-400">
+    <p>PDF2Link</p>
   </footer>
 
   <script type="module">
@@ -257,49 +272,58 @@
     // Application state
     const STATE = {
       currentPdfDoc: null,
-      currentPageNum: 1,
       totalPageCount: 0,
-      zoomScale: 1.1,
+      zoomScale: 1.0,
       currentPdfDataUrl: null,
       currentDocTitle: '',
       currentShareUrl: '',
-      currentDocId: ''
+      currentDocId: '',
+      pillTimer: null
     };
 
     if (window.pdfjsLib) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
-    // Firebase storage initialization
+    // Firebase cloud authentication & initialization
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pdf-app';
     let db = null;
     let auth = null;
-    let authReady = false;
+    let authUser = null;
+    let authPromise = null;
 
-    async function initCloudStorage() {
-      try {
-        if (typeof __firebase_config !== 'undefined') {
+    async function ensureCloudAuth() {
+      if (authUser) return authUser;
+      if (authPromise) return authPromise;
+
+      authPromise = (async () => {
+        try {
+          if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+            return null;
+          }
           const firebaseConfig = JSON.parse(__firebase_config);
           const app = initializeApp(firebaseConfig);
           auth = getAuth(app);
           db = getFirestore(app);
 
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
+            const cred = await signInWithCustomToken(auth, __initial_auth_token);
+            authUser = cred.user;
           } else {
-            await signInAnonymously(auth);
+            const cred = await signInAnonymously(auth);
+            authUser = cred.user;
           }
-          authReady = true;
-          return true;
+          return authUser;
+        } catch (err) {
+          console.warn("Cloud auth initialization:", err);
+          return null;
         }
-      } catch (err) {
-        console.warn("Cloud storage init error:", err);
-      }
-      return false;
+      })();
+
+      return authPromise;
     }
 
-    // IndexedDB for fast local device caching
-    const DB_NAME = 'PDF2Link_Minimal_Cache';
+    const DB_NAME = 'PDF2Link_Pure_Cache';
     let localDb = null;
 
     function initLocalCache() {
@@ -349,17 +373,16 @@
       });
     }
 
-    // Cloud storage functions: chunk large PDFs safely to conform to Firestore 1MB document limit
-    const CHUNK_SIZE = 500000; // ~500KB per chunk
+    const CHUNK_SIZE = 450000; // ~450KB chunks to safely respect Firestore 1MB document limit
 
     async function uploadPdfToCloud(docId, fileName, fileSize, base64Data) {
-      if (!db || !auth || !auth.currentUser) return false;
+      const user = await ensureCloudAuth();
+      if (!user || !db) return false;
 
       try {
         const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-
-        // Upload chunks sequentially or in parallel batches
         const chunkUploads = [];
+
         for (let i = 0; i < totalChunks; i++) {
           const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
           const chunkDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
@@ -370,7 +393,6 @@
         }
         await Promise.all(chunkUploads);
 
-        // Upload master metadata document
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
         await setDoc(metaDocRef, {
           id: docId,
@@ -388,7 +410,8 @@
     }
 
     async function fetchPdfFromCloud(docId) {
-      if (!db || !auth || !auth.currentUser) return null;
+      const user = await ensureCloudAuth();
+      if (!user || !db) return null;
 
       try {
         const metaDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_docs', docId);
@@ -399,7 +422,6 @@
         const meta = metaSnap.data();
         const totalChunks = meta.totalChunks || 1;
 
-        // Fetch all chunks in parallel
         const chunkFetches = [];
         for (let i = 0; i < totalChunks; i++) {
           const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'pdf_chunks', `${docId}_${i}`);
@@ -417,12 +439,11 @@
 
         if (!fullBase64) return null;
 
-        const dataUrl = 'data:application/pdf;base64,' + fullBase64;
         return {
           id: docId,
           name: meta.name,
           size: meta.size,
-          dataUrl: dataUrl
+          dataUrl: 'data:application/pdf;base64,' + fullBase64
         };
       } catch (err) {
         console.error("Cloud fetch error:", err);
@@ -430,15 +451,16 @@
       }
     }
 
-    // Construct a universal shareable URL
     function buildShareUrl(docId) {
-      try {
-        const url = new URL(window.location.href);
-        url.hash = `doc=${docId}`;
-        return url.toString();
-      } catch (e) {
-        return `${window.location.href.split('#')[0]}#doc=${docId}`;
+      let baseUrl = window.location.href.split('#')[0].split('?')[0];
+      if (!baseUrl || baseUrl === 'about:srcdoc' || baseUrl.startsWith('blob:')) {
+        if (window.location.origin && window.location.origin !== 'null') {
+          baseUrl = window.location.origin + window.location.pathname;
+        } else {
+          baseUrl = window.location.href.split('#')[0];
+        }
       }
+      return `${baseUrl}#doc=${docId}`;
     }
 
     const dropZone = document.getElementById('dropZone');
@@ -472,12 +494,12 @@
 
     async function processPdfFile(file) {
       if (!file || file.type !== 'application/pdf') {
-        showToast('El archivo debe ser un PDF válido', 'error');
+        showToast('Selecciona un archivo PDF válido', 'error');
         return;
       }
 
-      if (file.size > 15 * 1024 * 1024) {
-        showToast('El archivo supera los 15 MB permitidos.', 'error');
+      if (file.size > 20 * 1024 * 1024) {
+        showToast('El archivo supera los 20 MB.', 'error');
         return;
       }
 
@@ -508,7 +530,7 @@
         const base64Data = btoa(binary);
         const dataUrl = 'data:application/pdf;base64,' + base64Data;
 
-        // Unique short document id
+        // Generate unique compact identifier
         const docId = 'doc_' + Math.random().toString(36).substring(2, 8) + Date.now().toString(36).slice(-4);
         const shareUrl = buildShareUrl(docId);
 
@@ -521,18 +543,16 @@
           shareUrl: shareUrl
         };
 
-        // Cache locally for instant replay
+        // Cache locally for instant loading on this device
         await saveLocalPdf(record);
         saveHistoryItem(record);
 
         // Upload to universal cloud storage
         progressBar.style.width = '80%';
         percentText.innerText = '80%';
-        statusText.innerText = 'Sincronizando para acceso público...';
+        statusText.innerText = 'Sincronizando para acceso en cualquier dispositivo...';
 
-        if (authReady) {
-          await uploadPdfToCloud(docId, file.name, file.size, base64Data);
-        }
+        await uploadPdfToCloud(docId, file.name, file.size, base64Data);
 
         progressBar.style.width = '100%';
         percentText.innerText = '100%';
@@ -546,7 +566,7 @@
 
       reader.onerror = () => {
         progressContainer.classList.add('hidden');
-        showToast('Error al leer el archivo PDF.', 'error');
+        showToast('Error al procesar el archivo.', 'error');
       };
 
       reader.readAsArrayBuffer(file);
@@ -561,14 +581,14 @@
       document.getElementById('resFileName').innerText = `${record.name} (${formatBytes(record.size)})`;
       document.getElementById('generatedLinkInput').value = record.shareUrl;
 
-      // Clean QR code generation
+      // Render crisp QR Code
       const qrWrapper = document.getElementById('qrcodeWrapper');
       qrWrapper.innerHTML = '';
       new QRCode(qrWrapper, {
         text: record.shareUrl,
-        width: 120,
-        height: 120,
-        colorDark: "#18181b",
+        width: 124,
+        height: 124,
+        colorDark: "#09090b",
         colorLight: "#ffffff",
         correctLevel: QRCode.CorrectLevel.M
       });
@@ -580,7 +600,7 @@
       card.classList.remove('hidden');
       card.scrollIntoView({ behavior: 'smooth' });
 
-      showToast('Enlace listo para compartir', 'info');
+      showToast('Enlace creado con éxito', 'info');
     }
 
     function resetUploader() {
@@ -597,152 +617,255 @@
         document.execCommand('copy');
         showToast('Enlace copiado al portapapeles', 'info');
       } catch (err) {
-        showToast('Copia manual: pulsa Ctrl+C', 'info');
+        showToast('Copia manual con Ctrl+C', 'info');
       }
     }
 
-    function copyCurrentViewerLink() {
-      const shareUrl = STATE.currentShareUrl || buildShareUrl(STATE.currentDocId);
-      const temp = document.createElement('input');
-      temp.value = shareUrl;
-      document.body.appendChild(temp);
-      temp.select();
-      document.execCommand('copy');
-      document.body.removeChild(temp);
-      showToast('Liga copiada al portapapeles', 'info');
+    function openCurrentDocumentNow() {
+      if (STATE.currentDocId) {
+        window.location.hash = `doc=${STATE.currentDocId}`;
+        resolveDocFromHash();
+      }
     }
 
-    async function loadPdfIntoViewer(dataUrl, docName, docId) {
+    function enterPurePdfView() {
+      // Hide all standard web UI elements
+      document.getElementById('mainAppHeader').classList.add('hidden');
+      document.getElementById('mainAppFooter').classList.add('hidden');
+      document.getElementById('mainAppContent').classList.add('hidden');
+
+      // Show the pure PDF canvas container
+      const pureViewer = document.getElementById('pdfPureViewer');
+      pureViewer.classList.remove('hidden');
+
+      // Adapt body styling for true full-screen document viewing
+      document.body.classList.add('bg-[#323639]', 'overflow-hidden');
+      document.body.classList.remove('bg-[#fafafa]');
+
+      setupFloatingPillBehavior();
+    }
+
+    function exitPurePdfView() {
+      // Restore standard website view
+      document.getElementById('pdfPureViewer').classList.add('hidden');
+      document.getElementById('mainAppHeader').classList.remove('hidden');
+      document.getElementById('mainAppFooter').classList.remove('hidden');
+      document.getElementById('mainAppContent').classList.remove('hidden');
+
+      document.body.classList.remove('bg-[#323639]', 'overflow-hidden');
+      document.body.classList.add('bg-[#fafafa]');
+
+      showUploaderView();
+
+      if (window.location.hash) {
+        history.pushState(null, '', window.location.pathname);
+      }
+    }
+
+    async function renderPurePdfViewer(dataUrl, docName, docId) {
       STATE.currentPdfDataUrl = dataUrl;
       STATE.currentDocTitle = docName || 'Documento PDF';
       STATE.currentDocId = docId;
       STATE.currentShareUrl = buildShareUrl(docId);
 
-      document.getElementById('viewerDocTitle').innerText = STATE.currentDocTitle;
+      document.title = STATE.currentDocTitle;
       
-      const downloadBtn = document.getElementById('btnDownloadViewerPdf');
+      const downloadBtn = document.getElementById('floatingDownloadBtn');
       downloadBtn.href = dataUrl;
-      downloadBtn.download = docName || 'documento.pdf';
+      downloadBtn.download = STATE.currentDocTitle;
 
-      switchView('viewer');
+      enterPurePdfView();
+
+      const pagesContainer = document.getElementById('pdfPagesContainer');
+      pagesContainer.innerHTML = '';
 
       try {
         const loadingTask = pdfjsLib.getDocument(dataUrl);
         STATE.currentPdfDoc = await loadingTask.promise;
         STATE.totalPageCount = STATE.currentPdfDoc.numPages;
-        STATE.currentPageNum = 1;
 
-        document.getElementById('pageCountDisplay').innerText = STATE.totalPageCount;
-        renderCurrentPage();
+        document.getElementById('floatingPageTotal').innerText = STATE.totalPageCount;
+        document.getElementById('floatingPageNum').innerText = '1';
+
+        // Calculate initial optimal scale based on device screen width
+        const firstPage = await STATE.currentPdfDoc.getPage(1);
+        const unscaled = firstPage.getViewport({ scale: 1.0 });
+        const screenW = window.innerWidth;
+        
+        if (screenW < 768) {
+          // Mobile: fit full width with comfortable margin
+          STATE.zoomScale = Math.min((screenW - 24) / unscaled.width, 1.6);
+        } else {
+          // Desktop: comfortable centered reading width
+          STATE.zoomScale = Math.min((screenW - 64) / unscaled.width, 1.25);
+        }
+
+        updateZoomLabel();
+        await renderAllPages();
+        setupPageScrollObserver();
       } catch (err) {
         console.error("PDF.js render error:", err);
-        showToast('Error al renderizar el documento PDF.', 'error');
+        showToast('Error al visualizar el documento.', 'error');
       }
     }
 
-    async function renderCurrentPage() {
+    async function renderAllPages() {
       if (!STATE.currentPdfDoc) return;
 
-      document.getElementById('pageNumDisplay').innerText = STATE.currentPageNum;
-      document.getElementById('btnPrevPage').disabled = STATE.currentPageNum <= 1;
-      document.getElementById('btnNextPage').disabled = STATE.currentPageNum >= STATE.totalPageCount;
-      document.getElementById('zoomPercentDisplay').innerText = Math.round(STATE.zoomScale * 100) + '%';
+      const pagesContainer = document.getElementById('pdfPagesContainer');
+      pagesContainer.innerHTML = '';
 
-      const page = await STATE.currentPdfDoc.getPage(STATE.currentPageNum);
-      const viewport = page.getViewport({ scale: STATE.zoomScale });
+      const dpr = window.devicePixelRatio || 1;
 
-      const canvas = document.getElementById('thePdfCanvas');
-      const ctx = canvas.getContext('2d');
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+      for (let i = 1; i <= STATE.totalPageCount; i++) {
+        const page = await STATE.currentPdfDoc.getPage(i);
+        const baseViewport = page.getViewport({ scale: STATE.zoomScale });
+        const scaledViewport = page.getViewport({ scale: STATE.zoomScale * dpr });
 
-      await page.render({
-        canvasContext: ctx,
-        viewport: viewport
-      }).promise;
-    }
+        const pageWrapper = document.createElement('div');
+        pageWrapper.className = 'pdf-page-wrapper relative my-2 mx-auto shadow-2xl bg-white rounded-sm overflow-hidden flex items-center justify-center transition-all';
+        pageWrapper.dataset.pageNum = i;
+        pageWrapper.style.width = `${baseViewport.width}px`;
+        pageWrapper.style.minHeight = `${baseViewport.height}px`;
 
-    function changeViewerPage(delta) {
-      const target = STATE.currentPageNum + delta;
-      if (target >= 1 && target <= STATE.totalPageCount) {
-        STATE.currentPageNum = target;
-        renderCurrentPage();
+        const canvas = document.createElement('canvas');
+        canvas.id = `pdf-canvas-p${i}`;
+        canvas.className = 'w-full h-auto block';
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        canvas.style.width = `${baseViewport.width}px`;
+        canvas.style.height = `${baseViewport.height}px`;
+
+        pageWrapper.appendChild(canvas);
+        pagesContainer.appendChild(pageWrapper);
+
+        const ctx = canvas.getContext('2d');
+        page.render({
+          canvasContext: ctx,
+          viewport: scaledViewport
+        });
       }
     }
 
-    function changeZoom(factor) {
-      const newScale = Math.min(Math.max(STATE.zoomScale + factor, 0.4), 3.0);
-      if (newScale !== STATE.zoomScale) {
+    function setupPageScrollObserver() {
+      const scrollContainer = document.getElementById('pdfScrollContainer');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const pageNum = entry.target.dataset.pageNum;
+            if (pageNum) {
+              document.getElementById('floatingPageNum').innerText = pageNum;
+            }
+          }
+        });
+      }, {
+        root: scrollContainer,
+        threshold: 0.4
+      });
+
+      document.querySelectorAll('.pdf-page-wrapper').forEach(el => observer.observe(el));
+    }
+
+    function setupFloatingPillBehavior() {
+      const pill = document.getElementById('floatingControlsPill');
+      const container = document.getElementById('pdfScrollContainer');
+
+      const triggerVisibility = () => {
+        pill.classList.remove('opacity-0', 'pointer-events-none');
+        pill.classList.add('opacity-100');
+        clearTimeout(STATE.pillTimer);
+        STATE.pillTimer = setTimeout(() => {
+          pill.classList.remove('opacity-100');
+          pill.classList.add('opacity-0', 'pointer-events-none');
+        }, 3200);
+      };
+
+      container.removeEventListener('scroll', triggerVisibility);
+      container.removeEventListener('mousemove', triggerVisibility);
+      container.removeEventListener('touchstart', triggerVisibility);
+
+      container.addEventListener('scroll', triggerVisibility, { passive: true });
+      container.addEventListener('mousemove', triggerVisibility, { passive: true });
+      container.addEventListener('touchstart', triggerVisibility, { passive: true });
+
+      triggerVisibility();
+    }
+
+    function changePureZoom(delta) {
+      const newScale = Math.min(Math.max(STATE.zoomScale + delta, 0.4), 3.0);
+      if (Math.abs(newScale - STATE.zoomScale) > 0.02) {
         STATE.zoomScale = newScale;
-        renderCurrentPage();
+        updateZoomLabel();
+        renderAllPages();
+        setupPageScrollObserver();
       }
     }
 
-    function openViewerDirectly() {
-      if (STATE.currentPdfDataUrl) {
-        window.location.hash = `doc=${STATE.currentDocId}`;
-        loadPdfIntoViewer(STATE.currentPdfDataUrl, STATE.currentDocTitle, STATE.currentDocId);
-      }
+    function updateZoomLabel() {
+      document.getElementById('floatingZoomLabel').innerText = Math.round(STATE.zoomScale * 100) + '%';
     }
 
     async function resolveDocFromHash() {
       const hash = window.location.hash;
-      if (!hash || !hash.includes('doc=')) return;
+      if (!hash || !hash.includes('doc=')) {
+        exitPurePdfView();
+        return;
+      }
 
       const docId = hash.split('doc=')[1].split('&')[0];
-      if (!docId) return;
+      if (!docId) {
+        exitPurePdfView();
+        return;
+      }
 
-      // Show clean loading state
+      // Show clean fullscreen loading indicator
       const overlay = document.getElementById('loadingOverlay');
       overlay.classList.remove('hidden');
 
       try {
-        // Step 1: Check local cache first (immediate if same device)
+        // Step 1: Instant local cache check
         let record = await getLocalPdf(docId);
 
-        // Step 2: If not found locally, fetch from universal cloud storage
+        // Step 2: Cloud fetch if opened on another device/browser or via QR
         if (!record || !record.dataUrl) {
-          if (!authReady) {
-            await initCloudStorage();
-          }
+          await ensureCloudAuth();
           const cloudRecord = await fetchPdfFromCloud(docId);
           if (cloudRecord && cloudRecord.dataUrl) {
             record = cloudRecord;
-            await saveLocalPdf(record); // cache locally for next time
+            await saveLocalPdf(record); // Cache for quick re-reading
           }
         }
 
         if (record && record.dataUrl) {
-          loadPdfIntoViewer(record.dataUrl, record.name, record.id);
+          overlay.classList.add('hidden');
+          await renderPurePdfViewer(record.dataUrl, record.name, record.id);
         } else {
+          overlay.classList.add('hidden');
           showToast('No se encontró el documento o ha expirado.', 'error');
-          switchView('uploader');
+          exitPurePdfView();
         }
       } catch (err) {
         console.error("Resolution error:", err);
-        showToast('Error al obtener el documento.', 'error');
-      } finally {
         overlay.classList.add('hidden');
+        showToast('Error al obtener el documento.', 'error');
+        exitPurePdfView();
       }
     }
 
-    // View switcher
-    function switchView(viewName) {
-      document.getElementById('viewUploader').classList.add('hidden');
-      document.getElementById('viewViewer').classList.add('hidden');
+    function showUploaderView() {
+      document.getElementById('viewUploader').classList.remove('hidden');
       document.getElementById('viewHistory').classList.add('hidden');
+      document.getElementById('navBtnUpload').className = 'px-3 py-1.5 rounded-lg text-zinc-900 font-medium hover:bg-zinc-100 transition-colors';
+      document.getElementById('navBtnHistory').className = 'px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors flex items-center space-x-1.5';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
-      if (viewName === 'uploader') {
-        document.getElementById('viewUploader').classList.remove('hidden');
-        if (window.location.hash) {
-          history.pushState(null, '', window.location.pathname);
-        }
-      } else if (viewName === 'viewer') {
-        document.getElementById('viewViewer').classList.remove('hidden');
-      } else if (viewName === 'history') {
-        document.getElementById('viewHistory').classList.remove('hidden');
-        renderHistoryList();
-      }
+    function showHistoryView() {
+      document.getElementById('viewUploader').classList.add('hidden');
+      document.getElementById('viewHistory').classList.remove('hidden');
+      document.getElementById('navBtnUpload').className = 'px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors';
+      document.getElementById('navBtnHistory').className = 'px-3 py-1.5 rounded-lg text-zinc-900 font-medium hover:bg-zinc-100 transition-colors flex items-center space-x-1.5';
+      renderHistoryList();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -807,7 +930,7 @@
       `).join('');
     }
 
-    async function openHistoryDoc(id) {
+    function openHistoryDoc(id) {
       window.location.hash = `doc=${id}`;
       resolveDocFromHash();
     }
@@ -849,11 +972,11 @@
       const toast = document.createElement('div');
       
       const colors = {
-        error: 'bg-zinc-900 text-rose-300 border border-rose-900/50',
-        info: 'bg-zinc-900 text-white border border-zinc-800'
+        error: 'bg-zinc-950 text-rose-300 border border-rose-900/40',
+        info: 'bg-zinc-950 text-zinc-100 border border-zinc-800'
       };
 
-      toast.className = `${colors[type] || colors.info} px-3.5 py-2 rounded-xl text-xs font-medium shadow-md transition-all duration-200 opacity-0 translate-y-1`;
+      toast.className = `${colors[type] || colors.info} px-3.5 py-2 rounded-xl text-xs font-medium shadow-xl transition-all duration-200 opacity-0 translate-y-1`;
       toast.innerText = message;
 
       container.appendChild(toast);
@@ -867,27 +990,26 @@
       }, 3000);
     }
 
-    // Expose functions required in HTML onclick handlers
-    window.switchView = switchView;
+    window.showUploaderView = showUploaderView;
+    window.showHistoryView = showHistoryView;
     window.copyShareLink = copyShareLink;
-    window.copyCurrentViewerLink = copyCurrentViewerLink;
-    window.openViewerDirectly = openViewerDirectly;
-    window.changeViewerPage = changeViewerPage;
-    window.changeZoom = changeZoom;
     window.resetUploader = resetUploader;
+    window.openCurrentDocumentNow = openCurrentDocumentNow;
+    window.exitPurePdfView = exitPurePdfView;
+    window.changePureZoom = changePureZoom;
     window.openHistoryDoc = openHistoryDoc;
     window.deleteHistoryItem = deleteHistoryItem;
     window.clearAllHistory = clearAllHistory;
     window.copySpecificUrl = copySpecificUrl;
 
-    // Listen to hash changes dynamically (essential for QR code & link navigation)
+    // Listen to hash changes (for link opening and QR scanner redirects)
     window.addEventListener('hashchange', resolveDocFromHash);
     window.addEventListener('popstate', resolveDocFromHash);
 
-    // Initial load
+    // Initial boot
     window.addEventListener('DOMContentLoaded', async () => {
       await initLocalCache();
-      await initCloudStorage();
+      ensureCloudAuth();
       updateHistoryCount();
       resolveDocFromHash();
     });
